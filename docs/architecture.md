@@ -44,7 +44,7 @@ Two HTTP entry points are planned:
 
 | Route | Method | Purpose | Status |
 |---|---|---|---|
-| `app/[[...address]]/page.tsx` | — | Renders a page for an address (server component) | ⚪ |
+| `app/[[...address]]/page.tsx` | — | Renders a page for an address (server component) | 🟢 |
 | `app/api/reader/route.ts` | `POST` | AI-reader layer: interpret page, surface resonance, suggest next | ⚪ |
 | `app/api/generate/route.ts` | `GET` | Current prototype generator (no address, no store) | 🟢 (to be replaced) |
 
@@ -119,7 +119,7 @@ You flagged generation latency and streaming — this is where they collide with
 
 ## 5. Address format & normalization
 
-🟡 **Decided (provisional): a human-scaled Borges coordinate.** The address mirrors the Library of Babel's spatial hierarchy, shrunk to typeable tokens. This makes `next`/`random` well-defined, gives pages **locality** (neighboring pages can be thematically clustered later), and reinforces the "vast but bounded horizon" theme — *without* inheriting Borges' fixed *content* length (that's a content decision, see [§6](#6-generation-pipeline)).
+🟢 **Decided and implemented (Phase 1): a human-scaled Borges coordinate.** Code: `lib/address.ts`, locked by `lib/address.test.ts`. The address mirrors the Library of Babel's spatial hierarchy, shrunk to typeable tokens. This makes `next`/`random` well-defined, gives pages **locality** (neighboring pages can be thematically clustered later), and reinforces the "vast but bounded horizon" theme — *without* inheriting Borges' fixed *content* length (that's a content decision, see [§6](#6-generation-pipeline)).
 
 ### Scheme
 
@@ -130,20 +130,22 @@ You flagged generation latency and streaming — this is where they collide with
 
 | Segment | Range | Source |
 |---|---|---|
-| `gallery` | token over a constrained alphabet (e.g. base-36), bounded length | the vast dimension — astronomically large but **enumerable** |
+| `gallery` | lowercase `[a-z0-9-]`, 1–12 chars, hyphen never first or last | the vast dimension — astronomically large (~10¹⁸ galleries) but **enumerable** |
 | `wall` | 1–4 | Borges |
 | `shelf` | 1–5 | Borges |
 | `volume` | 1–32 | Borges |
 | `page` | 1–410 | Borges |
 
-The four small dimensions come straight from Borges and give book structure plus short, typeable coordinates; the `gallery` token supplies the vastness and *is* the bounded-but-huge horizon. The whole space is **finite and enumerable** — deliberately, matching [concept.md](./concept.md)'s "honest about its horizon." (Wall × shelf could later collapse into a single 1–20 "shelf" if the extra level proves fiddly; kept separate here for fidelity.)
+The four small dimensions come straight from Borges and give book structure plus short, typeable coordinates; the `gallery` token supplies the vastness and *is* the bounded-but-huge horizon. The whole space is **finite and enumerable** — deliberately, matching [concept.md](./concept.md)'s "honest about its horizon." **Wall × shelf are kept separate** (decided in Phase 1; not collapsed).
+
+**Gallery enumeration order** (for `next` rollover): a mixed-radix counter — first/last positions draw from `0-9a-z` (36 symbols), interior positions from `-0-9a-z` (37, ASCII order, so lexicographic order equals enumeration order within a length). A carry past the leftmost character grows the token by one (`z` → `00`, `zz` → `0-0`); past the largest token (`zzzzzzzzzzzz`) the library **wraps to gallery `0`** — finite and closed, every address has a successor.
 
 The **`page` is the atomic addressable unit** and a **fixed-size leaf** — a fixed container that holds a *bounded* amount of text (max, no min). See [§6](#6-generation-pipeline) for the generation constraint and [experience.md](./experience.md) for rendering.
 
 ### Navigation semantics
 
 - **next** — increment `page` within the volume; roll over at 410 into the next volume, then shelf, wall, gallery. Adjacency is real and ordered.
-- **random** — a uniformly random valid coordinate.
+- **random** — a random valid coordinate. Gallery *length* is chosen uniformly first, then characters — a deliberate deviation from strict uniformity (under which max-length galleries would dominate) so random landings stay typeable.
 - **typed** — the visitor types a coordinate directly. (Mapping free-form *phrases* into gallery space is a parked hybrid enhancement — ⚪, [Roadmap](./roadmap.md).)
 
 ### Routing (Next.js 16)
@@ -154,12 +156,11 @@ The **`page` is the atomic addressable unit** and a **fixed-size leaf** — a fi
 
 ### Normalization — permanent, test-locked
 
-`normalizeAddress` is **effectively permanent**: changing it orphans every stored page. Keep it one pure function with exhaustive tests. Rules:
+`normalizeAddress` is **effectively permanent**: changing it orphans every stored page. It is one pure function (`lib/address.ts`) locked by exhaustive tests (`lib/address.test.ts`, `npm test`). Rules as implemented:
 
-- lower-case the `gallery` token; reject any character outside its alphabet
-- parse `wall`/`shelf`/`volume`/`page` as integers and **reject out-of-range** — do *not* clamp (clamping would silently alias distinct URLs onto one page)
-- bound `gallery` length; reject empty or oversized addresses (`notFound()`)
-- canonical-join with `/`; the result is the primary key fed to both the store and the prompt anchor ([generation.md](./generation.md))
+- lower-case the `gallery` token — the **only** transformation; reject any character outside `[a-z0-9-]`, empty/oversized (>12) tokens, and leading/trailing hyphens
+- `wall`/`shelf`/`volume`/`page` must be **canonical decimal** (`^[1-9][0-9]{0,2}$`) and in range — reject, don't clamp *or alias*: `03`, `+3`, `3.0` all 404 rather than silently mapping onto another URL's page
+- canonical-join with `/` (`formatAddress`); the result is the primary key fed to both the store and the prompt anchor ([generation.md](./generation.md))
 
 ---
 
@@ -339,7 +340,6 @@ No premature abstraction is warranted today; this is a record of *why* it stays 
 
 Tracked in [Roadmap](./roadmap.md); the ones this doc depends on:
 
-- **Address normalization rule** — permanent once chosen; needs exact spec + tests ([§5](#5-address-format--normalization)).
 - **Model tier** — stay on `:free` or move to a cheap paid model for latency/no-train ([§6](#6-generation-pipeline)).
 - **Streaming exposure tradeoff** — live-stream-then-moderate vs. moderate-then-reveal ([§4](#4-streaming--moderation-interplay)).
 - **Rate-limit / spend-cap store** — Postgres counter vs. edge KV ([§10](#10-economics-enforcement)).

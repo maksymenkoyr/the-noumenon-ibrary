@@ -14,8 +14,9 @@ A phased build plan from the current prototype to a public, walkable library. Ph
 
 - `[x]` Next.js 16 App Router + TypeScript + Tailwind scaffold
 - `[x]` `GET /api/generate` calls OpenRouter and returns a page of text
-- `[x]` `app/page.tsx` renders text — but via a localhost self-`fetch` (anti-pattern, [§14](./architecture.md))
-- `[]` No address system, no store, no moderation, no rate limit, no UI
+- `[x]` All resolution logic flows through `lib/resolvePage`, called directly from server components
+- `[x]` Address system live: `app/[[...address]]/page.tsx` + test-locked `lib/address.ts` (random / next / typed)
+- `[]` No store, no moderation, no rate limit; UI is a minimal page render (Phase 5)
 
 Everything below turns that single hardcoded call into the system described in [Architecture](./architecture.md).
 
@@ -50,11 +51,11 @@ Everything below turns that single hardcoded call into the system described in [
 **Goal:** the library has coordinates; you can navigate them.
 **Depends on:** Phase 0. **This phase is effectively permanent — lock it carefully.**
 
-- `[ ]` Decide `gallery` alphabet + length bound; decide whether to collapse `wall × shelf` into one 1–20 dimension ([§5](./architecture.md))
-- `[ ]` Implement `normalizeAddress(segments)` as a pure function — reject-don't-clamp out-of-range; **exhaustive tests** (changing this later orphans every page)
-- `[ ]` Routing: `app/[[...address]]/page.tsx` optional catch-all; `await params`
-- `[ ]` `randomAddress()` and `nextAddress(addr)` (page→volume→shelf→… rollover)
-- `[ ]` Minimal render: show generated text for a typed/random address (still regenerating per visit — store comes next)
+- `[x]` Decide `gallery` alphabet + length bound; decide whether to collapse `wall × shelf` into one 1–20 dimension ([§5](./architecture.md)) — locked: `[a-z0-9-]`, 1–12 chars, hyphen interior-only; wall × shelf kept separate
+- `[x]` Implement `normalizeAddress(segments)` as a pure function — reject-don't-clamp out-of-range; **exhaustive tests** (changing this later orphans every page) — `lib/address.ts`, locked by `lib/address.test.ts` (`npm test`)
+- `[x]` Routing: `app/[[...address]]/page.tsx` optional catch-all; `await params`
+- `[x]` `randomAddress()` and `nextAddress(addr)` (page→volume→shelf→… rollover)
+- `[x]` Minimal render: show generated text for a typed/random address (still regenerating per visit — store comes next)
 
 **Done when:** typing `/io-9/3/2/17/308`, hitting random, and stepping "next" all resolve to a page; normalization is test-covered and frozen.
 
@@ -181,6 +182,10 @@ Everything below turns that single hardcoded call into the system described in [
 | Entropy levers         | Seed word injection + `"you do not know what you are"` as primary levers                    |
 | Navigation model       | Wandering-only (random / next / typed address); no semantic search                          |
 | Address topology       | Human-scaled Borges coordinates: `gallery/wall/shelf/volume/page` ([§5](./architecture.md)) |
+| Gallery token format   | Lowercase `[a-z0-9-]`, 1–12 chars, hyphen never first/last; lowercasing is the only normalization transform |
+| Wall × shelf           | Kept separate (wall 1–4, shelf 1–5) — Borges fidelity; not collapsed                        |
+| Random distribution    | Gallery length uniform first, then chars — typeable landings over strict uniformity         |
+| Library closure        | Finite and toroidal: `next` past the last address wraps to `0/1/1/1/1`                      |
 | Page model             | Fixed-size leaf, variable text (hard max, no min) — provisional, see Phase 5                |
 | Permanence model       | Store-based, not algorithmic seeding                                                        |
 | Page store             | Neon Postgres                                                                               |
@@ -194,7 +199,6 @@ Everything below turns that single hardcoded call into the system described in [
 
 ## Provisional / to revisit
 
-- **`gallery` alphabet & `wall × shelf` collapse** — settle when locking `normalizeAddress` (Phase 1)
 - **Page-size aesthetic** — validate partial pages against the "books are usually full" instinct; may add a soft minimum (Phase 5)
 - **Model tier** — stay on `:free` or move to a cheap paid model for latency/no-train (Phase 3/9)
 - **Streaming exposure** — live-stream-then-moderate vs. moderate-then-reveal ([§4](./architecture.md))

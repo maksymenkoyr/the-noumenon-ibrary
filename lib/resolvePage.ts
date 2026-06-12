@@ -8,12 +8,13 @@ const PROMPT =
  * Resolve the page at a given address to its text.
  *
  * The single spine of the library: callable from both a server component
- * and a route handler. Phase 0 just generates per call; later phases add
+ * and a route handler. Phase 1 still generates per visit; later phases add
  * the store lookup → reserve → generate → commit lifecycle (docs/roadmap.md §2).
  *
- * @param address - reserved for the Phase 1 address system; unused for now.
+ * @param address - canonical normalized address (lib/address.ts). Becomes
+ * the store key in Phase 2 and the prompt anchor in Phase 3.
  */
-export async function resolvePage(_address?: string): Promise<string> {
+export async function resolvePage(_address: string): Promise<string> {
   const response = await openrouter.chat.completions.create({
     model: config.model,
     messages: [{ role: "user", content: PROMPT }],
